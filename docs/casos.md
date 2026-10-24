@@ -18,7 +18,7 @@ La operación de soporte recibe la referencia externa de un pago y decide con `P
 3. Solo eventos `DECLINED`: el estado objetivo es `REJECTED` y el neto objetivo es `0`. Si hay débitos, se reversan con la misma regla de exceso exacto.
 4. Si el pago está `REJECTED` y la evidencia es solo `APPROVED`, el resultado es `MANUAL_REVIEW`. No se reabre solo.
 5. Si falta dinero, la evidencia es solo `APPROVED` y la diferencia es exacta, se agrega un `DEBIT` por esa diferencia.
-6. Si sobra dinero, se reversa el débito completo más reciente que no tenga reverso, y solo cuando su monto es exactamente el exceso. Se conserva el débito más antiguo. Si el exceso no coincide con un débito entero, el resultado es `MANUAL_REVIEW` y no se parte el monto.
+6. Si sobra dinero, se reversan débitos completos del más reciente al más antiguo. Cada uno se reversa solo si su monto cabe en el exceso que falta. Si el más reciente no cabe, no se usa un débito anterior: el resultado es `MANUAL_REVIEW` y no se escribe ningún movimiento. No se parte un monto.
 7. La primera ejecución que no cambia datos deja una auditoría. La repetición de una conciliación ya resuelta, o ya marcada para revisión con el mismo motivo, no escribe de nuevo.
 
 Resultados de la operación:
@@ -79,7 +79,7 @@ Estos puntos no están cerrados por el enunciado. La implementación los va a se
 | Supuesto | Riesgo | Qué lo comprobaría |
 | --- | --- | --- |
 | Varios eventos con el mismo estado son reintentos de un mismo pago, no cargos distintos. Por eso dos `APPROVED` no son contradicción. | Reversar un débito que sí correspondía a un segundo cargo. | El estado canónico de esa referencia en el proveedor, y que la referencia externa identifique un único pago. |
-| El débito que se conserva es el más antiguo. Se reversa el más reciente, entero, y solo si su monto es exactamente el exceso. En `PAY-BX17` el candidato es el movimiento `5003`, si su hora es la posterior. | Apuntar el reverso al débito que sí debía quedarse, si el orden real no es el del log. | Hora e identificador de los dos débitos antes de ejecutar. |
+| El débito que se conserva es el más antiguo. Se reversa el más reciente, entero. Si hacen falta varios, se sigue con el siguiente más reciente mientras cada uno quepa en el exceso que falta. Si el más reciente no cabe, no se usa un débito anterior y no se escribe nada. Si la hora coincide, el más reciente es el de identificador mayor. En `PAY-BX17` el candidato es el movimiento `5003`, si su hora es la posterior. | Apuntar el reverso al débito que sí debía quedarse, si el orden real no es el del log. | Hora e identificador de los dos débitos antes de ejecutar. |
 | Un pago `REJECTED` con evidencia solo `APPROVED` no se pasa a `CONFIRMED` de forma automática. | Dejar sin corregir un rechazo que fue un fallo del propio sistema. | El motivo del rechazo y si el proveedor mantiene `APPROVED`. |
 | Sin eventos no se modifica nada, aunque el estado y el ledger parezcan sanos. | Señalar para revisión un pago coherente cuya evidencia aún no se guardó. | Si los eventos existen en el proveedor y faltan en la base. |
 | La repetición es idempotente porque el estado deseado se calcula con la evidencia actual. No hace falta un identificador de request. | Una segunda llamada sí escribe si alguien cambió eventos o movimientos entre las dos. Ese efecto es deliberado: la evidencia nueva merece otra decisión. | Comparar eventos y ledger de las dos ejecuciones cuando aparezca una auditoría nueva. |
